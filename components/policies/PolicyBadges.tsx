@@ -1,14 +1,10 @@
 import { Badge } from '@/components/ui/badge';
+import { POLICY_TYPE_LABEL } from '@/lib/policies/behavior';
+import type { PolicyType } from '@/lib/policies/behavior';
 
-const TYPE_LABEL: Record<string, string> = {
-  travel: 'Travel',
-  car: 'Car',
-  home: 'Home',
-};
-
-/** Badge for a policy type (travel/car/home). */
+/** Badge for any policy type — labels come from the behavior map. */
 export function PolicyTypeBadge({ type }: { type: string }) {
-  return <Badge variant="secondary">{TYPE_LABEL[type] ?? type}</Badge>;
+  return <Badge variant="secondary">{POLICY_TYPE_LABEL[type as PolicyType] ?? type}</Badge>;
 }
 
 /** Colored badge for policy status. */

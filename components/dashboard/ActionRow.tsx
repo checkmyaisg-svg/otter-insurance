@@ -1,49 +1,51 @@
 import Link from 'next/link';
 import type { TodayItem, TodayTone } from '@/lib/data/dashboard';
-
-const DOT: Record<TodayTone, string> = {
-  urgent: 'bg-destructive',
-  warning: 'bg-amber-500',
-  info: 'bg-primary',
-  neutral: 'bg-muted-foreground',
-};
-const STATUS_STYLE: Record<TodayTone, string> = {
-  urgent: 'text-destructive',
-  warning: 'text-amber-600',
-  info: 'text-primary',
-  neutral: 'text-muted-foreground',
-};
+import { MessageDraft } from '@/components/whatsapp/MessageDraft';
 
 /**
- * One actionable row. Answers "why look at this?": client, reason, date, status,
- * one action. The whole row is a large tap target linking via `href` (the Action
- * View seam). On mobile the action label collapses to a chevron so the row never
- * cramps; on desktop the full "Action →" shows.
+ * One actionable row — OPERATIONAL DENSITY (DS V2.1).
+ * Single line, 36px: dot · client · reason · date · draft action.
+ * Color budget: the tone dot is the ONLY color in a row (urgent rows add a red
+ * status word). Typography carries hierarchy — weight for the client, muted
+ * for the reason, tabular faint for the date. Everything scannable in one
+ * horizontal eye-line; 30 tasks fit where 12 fit before.
  */
+const DOT: Record<TodayTone, string> = {
+  urgent: 'bg-destructive',
+  warning: 'bg-warning',
+  info: 'bg-primary',
+  neutral: 'bg-faint/60',
+};
+
 export function ActionRow({ item }: { item: TodayItem }) {
   return (
-    <li>
+    <li className="group flex items-center">
       <Link
         href={item.href}
-        className="flex items-center gap-3 rounded-lg px-3 py-3 transition-colors hover:bg-muted/60"
+        className="flex h-9 min-w-0 flex-1 items-center gap-2.5 rounded px-2 transition-colors duration-150 hover:bg-muted/60 max-sm:h-12"
       >
-        <span className={`mt-0.5 h-2.5 w-2.5 shrink-0 self-start rounded-full ${DOT[item.tone]}`} aria-hidden />
-        <div className="min-w-0 flex-1">
-          <p className="text-sm font-medium">
-            {item.clientName} <span className="font-normal text-muted-foreground">— {item.reason}</span>
-          </p>
-          <p className="mt-0.5 text-xs text-muted-foreground">
-            {item.dateLabel} · <span className={STATUS_STYLE[item.tone]}>{item.status}</span>
-          </p>
-        </div>
-        {/* Desktop: full action label. Mobile: chevron. */}
-        <span className="hidden shrink-0 text-sm font-medium text-primary sm:inline">
-          {item.actionLabel} →
+        <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${DOT[item.tone]}`} aria-hidden />
+        <span className="shrink-0 truncate text-[13.5px] font-medium text-foreground">
+          {item.clientName}
         </span>
-        <svg className="h-4 w-4 shrink-0 text-muted-foreground sm:hidden" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
-          <polyline points="9 18 15 12 9 6" />
-        </svg>
+        <span className="min-w-0 flex-1 truncate text-[13px] text-muted-foreground">
+          {item.reason}
+        </span>
+        {item.tone === 'urgent' ? (
+          <span className="shrink-0 text-[12px] font-medium text-destructive">{item.status}</span>
+        ) : null}
+        <time className="shrink-0 text-[12.5px] tabular-nums text-faint">{item.dateLabel}</time>
       </Link>
+      {item.draft ? (
+        <MessageDraft
+          clientId={item.clientId}
+          clientName={item.clientName}
+          policyId={item.draft.policyId}
+          phone={item.draft.phone}
+          message={item.draft.message}
+          compact
+        />
+      ) : null}
     </li>
   );
 }

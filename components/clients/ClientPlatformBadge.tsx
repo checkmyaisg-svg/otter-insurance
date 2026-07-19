@@ -1,13 +1,24 @@
-import { Badge } from '@/components/ui/badge';
-import { formatPlatform } from '@/lib/format/display';
+/**
+ * Preferred-platform indicator. Deliberately NOT pill/button-shaped: a status
+ * dot + quiet text. (Design rule: pills = status badges only; anything
+ * button-shaped must be pressable. This used to look like a green button.)
+ */
+const DOT: Record<string, string> = {
+  whatsapp: 'bg-primary',
+  wechat: 'bg-emerald-500',
+  telegram: 'bg-sky-500',
+};
+const LABEL: Record<string, string> = {
+  whatsapp: 'WhatsApp',
+  wechat: 'WeChat',
+  telegram: 'Telegram',
+};
 
-/** Colored badge for a client's preferred messaging platform. */
 export function ClientPlatformBadge({ platform }: { platform: string }) {
-  const isActive = platform === 'whatsapp'; // only whatsapp is functional in V1
   return (
-    <Badge variant={isActive ? 'default' : 'outline'}>
-      {formatPlatform(platform)}
-      {!isActive ? ' (soon)' : ''}
-    </Badge>
+    <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
+      <span className={`h-1.5 w-1.5 rounded-full ${DOT[platform] ?? 'bg-muted-foreground'}`} aria-hidden />
+      {LABEL[platform] ?? platform}
+    </span>
   );
 }

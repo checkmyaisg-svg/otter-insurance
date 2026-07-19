@@ -4,9 +4,9 @@ import { getClientById } from '@/lib/data/clients';
 import { getPoliciesForClient } from '@/lib/data/policies';
 import { getClientTimeline } from '@/lib/data/timeline';
 import { ClientDetailCard } from '@/components/clients/ClientDetailCard';
+import { ClientPlatformBadge } from '@/components/clients/ClientPlatformBadge';
 import { ClientPoliciesSection } from '@/components/clients/ClientPoliciesSection';
 import { CustomerTimeline } from '@/components/timeline/CustomerTimeline';
-import { ClientSectionPlaceholder } from '@/components/clients/ClientSectionPlaceholder';
 import { DeleteClientDialog } from '@/components/clients/DeleteClientDialog';
 import { Button } from '@/components/ui/button';
 
@@ -32,18 +32,23 @@ export default async function ClientDetailPage({
   const timeline = await getClientTimeline(id, policies);
 
   return (
-    <main className="mx-auto max-w-3xl p-6 md:p-8">
+    <main className="mx-auto max-w-[960px] p-6 md:p-8">
       <div className="mb-6">
         <Link href="/clients" className="text-sm text-muted-foreground hover:text-primary">
           ← Back to clients
         </Link>
       </div>
 
-      <div className="mb-6 flex items-start justify-between gap-4">
+      <div className="mb-8 flex items-start justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-semibold">{client.full_name}</h1>
-          <p className="text-sm text-muted-foreground">
-            {policies.length} {policies.length === 1 ? 'policy' : 'policies'}
+          <h1 className="text-[22px] font-semibold tracking-tight">{client.full_name}</h1>
+          <p className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[13.5px] text-muted-foreground">
+            <span className="tabular-nums">{client.phone_number}</span>
+            {client.email ? <span>{client.email}</span> : null}
+            <ClientPlatformBadge platform={client.preferred_platform} />
+            <span className="text-faint">
+              {policies.length} {policies.length === 1 ? 'policy' : 'policies'}
+            </span>
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -59,15 +64,11 @@ export default async function ClientDetailPage({
 
         <ClientPoliciesSection clientId={client.id} policies={policies} />
 
-        <section className="rounded-lg border bg-card p-6">
+        <section className="rounded-xl bg-card shadow-[0_0_0_1px_rgba(255,255,255,0.04),0_2px_8px_rgba(0,0,0,0.35)] p-6">
           <h2 className="mb-4 text-sm font-semibold">Customer timeline</h2>
           <CustomerTimeline events={timeline} />
         </section>
 
-        <ClientSectionPlaceholder
-          title="Message history"
-          description="Sent and received WhatsApp messages will appear here once messaging is live."
-        />
       </div>
     </main>
   );

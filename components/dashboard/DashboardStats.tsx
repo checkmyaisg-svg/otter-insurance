@@ -9,12 +9,12 @@ export function DashboardStats({ stats }: { stats: TodayData['stats'] }) {
     { label: 'Reminders pending', value: stats.remindersPending },
   ];
   return (
-    <div className="mb-8 grid grid-cols-2 gap-px overflow-hidden rounded-xl border bg-border sm:grid-cols-4">
+    <div className="mb-8 flex flex-wrap items-center gap-x-6 gap-y-2 text-sm text-muted-foreground">
       {chips.map((c) => (
-        <div key={c.label} className="bg-card px-4 py-3.5">
-          <div className="text-xl font-semibold tabular-nums">{c.value}</div>
-          <div className="mt-0.5 text-xs text-muted-foreground">{c.label}</div>
-        </div>
+        <span key={c.label} className="inline-flex items-baseline gap-1.5">
+          <span className="font-semibold tabular-nums text-foreground">{c.value}</span>
+          {c.label}
+        </span>
       ))}
     </div>
   );

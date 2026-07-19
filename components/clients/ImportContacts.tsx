@@ -1,6 +1,7 @@
 'use client';
 
 import * as React from 'react';
+import { IconUsers, IconCheckBig } from '@/components/ui/icons';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { parseContacts } from '@/lib/import/parse';
@@ -115,9 +116,9 @@ export function ImportContacts({ onClose }: { onClose: () => void }) {
                 onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
                 onDragLeave={() => setDragOver(false)}
                 onDrop={onDrop}
-                className={`flex flex-col items-center justify-center rounded-xl border-2 border-dashed p-10 text-center transition-colors ${dragOver ? 'border-primary bg-accent' : 'border-border'}`}
+                className={`flex flex-col items-center justify-center rounded-xl border-2 p-10 text-center transition-colors ${dragOver ? 'border-primary bg-accent' : 'border-border'}`}
               >
-                <div className="text-3xl" aria-hidden>📇</div>
+                <IconUsers size={20} className="mx-auto text-faint" aria-hidden />
                 <p className="mt-3 text-sm font-medium">Drag a file here, or choose one</p>
                 <p className="mt-1 text-xs text-muted-foreground">CSV or VCF (vCard) — exported from your phone or email</p>
                 <label className="mt-4">
@@ -282,7 +283,7 @@ function ImportSummaryView({ summary, result }: { summary: ImportSummary; result
   const invalid = result?.counts.invalid ?? 0;
   return (
     <div className="py-6 text-center">
-      <div className="text-4xl" aria-hidden>🎉</div>
+      <IconCheckBig size={22} className="mx-auto text-primary" aria-hidden />
       <h3 className="mt-3 text-lg font-semibold">Import complete</h3>
       <p className="mt-1 text-sm text-muted-foreground">Your clients are ready.</p>
 

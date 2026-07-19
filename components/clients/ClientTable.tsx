@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { IconChevronRight } from '@/components/ui/icons';
 import { Avatar } from '@/components/ui/avatar';
 import { ClientPlatformBadge } from './ClientPlatformBadge';
 import { formatDate } from '@/lib/format/display';
@@ -22,7 +23,7 @@ export function ClientTable({
 }) {
   if (clients.length === 0) {
     return (
-      <div className="rounded-xl border border-dashed bg-card p-12 text-center">
+      <div className="rounded-lg bg-muted/60 bg-card p-12 text-center">
         <p className="text-sm font-medium">
           {hasSearch ? 'No clients match your search.' : 'No clients yet.'}
         </p>
@@ -34,7 +35,7 @@ export function ClientTable({
   }
 
   return (
-    <ul className="divide-y overflow-hidden rounded-xl border bg-card">
+    <ul className="divide-y overflow-hidden rounded-xl bg-card shadow-[0_0_0_1px_rgba(255,255,255,0.04),0_2px_8px_rgba(0,0,0,0.35)]">
       {clients.map((c) => (
         <li key={c.id} className="group relative flex items-center">
           <Link href={`/clients/${c.id}`} className="flex min-w-0 flex-1 items-center gap-3 px-4 py-3.5 transition-colors hover:bg-muted/40">
@@ -60,22 +61,27 @@ export function ClientTable({
                 <p className="text-sm tabular-nums">{formatDate(c.birthday)}</p>
               </div>
             </div>
-
-            <svg className="h-4 w-4 shrink-0 text-muted-foreground" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
-              <polyline points="9 18 15 12 9 6" />
-            </svg>
           </Link>
 
-          {/* Desktop hover actions, overlaid over the chevron area */}
-          <div className="absolute right-10 top-1/2 hidden -translate-y-1/2 items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100 md:flex">
+          {/* Desktop actions: IN-FLOW with permanently reserved space — nothing
+              overlaps data. Fade on hover is opacity-only; layout never shifts.
+              (Regression guard: never absolutely position actions over columns.) */}
+          <div className="hidden shrink-0 items-center gap-1 pr-2 md:flex">
             <Link
               href={`/clients/${c.id}/edit`}
-              className="rounded-md bg-card px-2 py-1 text-xs font-medium text-muted-foreground shadow-sm ring-1 ring-border hover:bg-muted hover:text-foreground"
+              className="rounded-md px-2 py-1 text-xs font-medium text-muted-foreground opacity-0 transition-opacity hover:bg-muted hover:text-foreground focus-visible:opacity-100 group-hover:opacity-100"
             >
               Edit
             </Link>
-            {renderDelete(c)}
+            <span className="opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
+              {renderDelete(c)}
+            </span>
           </div>
+
+          {/* Chevron: mobile-only affordance (desktop shows actions instead) */}
+          <Link href={`/clients/${c.id}`} aria-hidden tabIndex={-1} className="pr-4 md:hidden">
+            <IconChevronRight size={16} className="shrink-0 text-muted-foreground" />
+          </Link>
         </li>
       ))}
     </ul>

@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server';
 
-export type PolicyType = 'travel' | 'car' | 'home';
+import type { PolicyType, PaymentMode } from '@/lib/policies/behavior';
+export type { PolicyType, PaymentMode };
 export type PolicyStatus = 'active' | 'expired' | 'cancelled';
 
 /** A policy row with its client's name joined in, for list/detail display. */
@@ -11,14 +12,20 @@ export interface PolicyListItem {
   policy_type: PolicyType;
   destination: string | null;
   start_date: string;
-  end_date: string;
+  end_date: string | null;
   renewal_date: string | null;
+  insurer: string | null;
+  policy_number: string | null;
+  premium_amount: number | null;
+  payment_mode: PaymentMode | null;
+  sum_assured: number | null;
+  riders: Array<{ name: string; sum_assured?: number }>;
   status: PolicyStatus;
   version: number;
   created_at: string;
 }
 
-const SELECT = 'id, client_id, policy_type, destination, start_date, end_date, renewal_date, status, version, created_at, clients(full_name)';
+const SELECT = 'id, client_id, policy_type, destination, start_date, end_date, renewal_date, insurer, policy_number, premium_amount, payment_mode, sum_assured, riders, status, version, created_at, clients(full_name)';
 
 // Supabase returns the joined relation as clients: { full_name } | null.
 function mapRow(row: Record<string, unknown>): PolicyListItem {
@@ -30,8 +37,14 @@ function mapRow(row: Record<string, unknown>): PolicyListItem {
     policy_type: row.policy_type as PolicyType,
     destination: (row.destination as string | null) ?? null,
     start_date: row.start_date as string,
-    end_date: row.end_date as string,
+    end_date: (row.end_date as string | null) ?? null,
     renewal_date: (row.renewal_date as string | null) ?? null,
+    insurer: (row.insurer as string | null) ?? null,
+    policy_number: (row.policy_number as string | null) ?? null,
+    premium_amount: row.premium_amount != null ? Number(row.premium_amount) : null,
+    payment_mode: (row.payment_mode as PaymentMode | null) ?? null,
+    sum_assured: row.sum_assured != null ? Number(row.sum_assured) : null,
+    riders: Array.isArray(row.riders) ? (row.riders as Array<{ name: string; sum_assured?: number }>) : [],
     status: row.status as PolicyStatus,
     version: row.version as number,
     created_at: row.created_at as string,

@@ -9,25 +9,29 @@
  */
 @layer base {
   :root {
-    --background: 150 20% 98.5%;
-    --foreground: 222 47% 8%;
-    --card: 0 0% 100%;
-    --card-foreground: 222 47% 8%;
-    --primary: 152 58% 34%;
-    --primary-foreground: 0 0% 100%;
-    --secondary: 150 20% 96%;
-    --secondary-foreground: 222 47% 10%;
-    --muted: 150 16% 95.5%;
-    --muted-foreground: 215 14% 42%;
-    --accent: 152 45% 94%;
-    --accent-foreground: 152 60% 22%;
-    --destructive: 0 72% 51%;
-    --destructive-foreground: 0 0% 100%;
-    --border: 214 20% 90%;
-    --input: 214 20% 86%;
-    --ring: 152 58% 34%;
-    --radius: 0.625rem;
-    --sidebar: 155 22% 97%;
+    /* OTTER DS V2 — dark-first. Raw palette locked in docs/design-system-v2.md. */
+    --background: 225 21% 7.5%;          /* #0F1117 */
+    --foreground: 216 33% 97.1%;         /* #F5F7FA */
+    --card: 222 22% 11.6%;               /* #171B24 */
+    --card-foreground: 216 33% 97.1%;
+    --primary: 142 71% 45.3%;            /* #22C55E */
+    --primary-foreground: 142 80% 10%;   /* #052E14 — dark ink on green */
+    --primary-active: 142 76% 36.3%;     /* #16A34A */
+    --secondary: 221 23% 16.3%;          /* hover surface as secondary bg */
+    --secondary-foreground: 216 33% 97.1%;
+    --muted: 221 23% 16.3%;              /* #202633 */
+    --muted-foreground: 215 20% 65.1%;   /* #94A3B8 — AA everywhere */
+    --faint-foreground: 215 16% 46.9%;   /* #64748B — labels/metadata ONLY (fails AA body) */
+    --accent: 221 23% 16.3%;
+    --accent-foreground: 142 71% 45.3%;
+    --destructive: 0 84% 60.2%;          /* #EF4444 */
+    --destructive-foreground: 216 33% 97.1%;
+    --warning: 38 92% 50.2%;             /* #F59E0B */
+    --border: 0 0% 100%;                 /* used at /6 via border-hairline util */
+    --input: 0 0% 100%;
+    --ring: 142 71% 45.3%;
+    --radius: 0.25rem;                   /* 4px controls; cards use rounded-lg 8px */
+    --sidebar: 221 39% 11%;              /* #111827 */
   }
 
   .dark {
@@ -51,12 +55,40 @@
   }
 
   * {
-    @apply border-border;
+    border-color: hsl(var(--border) / 0.06);
   }
   body {
-    @apply bg-background text-foreground;
-    font-family:
-      ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica,
-      Arial, sans-serif;
+    @apply bg-background text-foreground antialiased;
+    font-family: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+    font-feature-settings: 'tnum' 1, 'cv03' 1, 'cv04' 1;
+    letter-spacing: -0.006em;
   }
+}
+
+/* OTTER DS V2 — motion. One easing, three durations, reduced-motion honored. */
+@keyframes ds-enter {
+  from { opacity: 0; transform: translateY(3px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.ds-enter { animation: ds-enter 180ms cubic-bezier(0.2, 0, 0, 1) both; }
+.ds-stagger > * { animation: ds-enter 180ms cubic-bezier(0.2, 0, 0, 1) both; }
+.ds-stagger > *:nth-child(1) { animation-delay: 0ms; }
+.ds-stagger > *:nth-child(2) { animation-delay: 30ms; }
+.ds-stagger > *:nth-child(3) { animation-delay: 60ms; }
+.ds-stagger > *:nth-child(4) { animation-delay: 90ms; }
+.ds-stagger > *:nth-child(5) { animation-delay: 120ms; }
+@media (prefers-reduced-motion: reduce) {
+  .ds-enter, .ds-stagger > * { animation: none; }
+  * { transition-duration: 1ms !important; }
+}
+
+/* Native date inputs: Chrome renders the picker icon near-black on dark
+   themes. Invert it into the visible range and brighten on hover. */
+input[type='date']::-webkit-calendar-picker-indicator {
+  filter: invert(0.65);
+  opacity: 0.9;
+  cursor: pointer;
+}
+input[type='date']::-webkit-calendar-picker-indicator:hover {
+  filter: invert(0.9);
 }

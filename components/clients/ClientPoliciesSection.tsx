@@ -17,7 +17,7 @@ export function ClientPoliciesSection({
   policies: PolicyListItem[];
 }) {
   return (
-    <section className="rounded-lg border bg-card p-6">
+    <section className="rounded-xl bg-card shadow-[0_0_0_1px_rgba(255,255,255,0.04),0_2px_8px_rgba(0,0,0,0.35)] p-6">
       <div className="mb-4 flex items-center justify-between">
         <h2 className="text-sm font-semibold">Policies</h2>
         <Button asChild variant="outline" size="sm">
@@ -26,7 +26,7 @@ export function ClientPoliciesSection({
       </div>
 
       {policies.length === 0 ? (
-        <div className="rounded-md border border-dashed p-6 text-center">
+        <div className="rounded-lg bg-muted/50 p-6 text-center">
           <p className="text-sm text-muted-foreground">No policies yet.</p>
         </div>
       ) : (
@@ -38,7 +38,9 @@ export function ClientPoliciesSection({
                 <span className="text-sm text-muted-foreground">
                   {p.policy_type === 'travel'
                     ? (p.destination ?? '—')
-                    : `Renews ${formatDate(p.renewal_date)}`}
+                    : p.renewal_date
+                      ? `Renews ${formatDate(p.renewal_date)}`
+                      : [p.insurer, p.policy_number].filter(Boolean).join(' · ') || 'Protection'}
                 </span>
               </div>
               <div className="flex items-center gap-3">

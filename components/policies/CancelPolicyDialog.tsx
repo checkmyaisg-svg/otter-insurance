@@ -21,11 +21,17 @@ export function CancelPolicyDialog({
   version: number;
   policy: {
     client_id: string;
-    policy_type: 'travel' | 'car' | 'home';
+    policy_type: 'travel' | 'car' | 'home' | 'life' | 'health' | 'ci';
     destination: string | null;
     start_date: string;
-    end_date: string;
+    end_date: string | null;
     renewal_date: string | null;
+    insurer: string | null;
+    policy_number: string | null;
+    premium_amount: number | null;
+    payment_mode: 'monthly' | 'quarterly' | 'semi_annual' | 'annual' | 'single' | null;
+    sum_assured: number | null;
+    riders: Array<{ name: string; sum_assured?: number }>;
   };
 }) {
   const router = useRouter();
@@ -37,22 +43,35 @@ export function CancelPolicyDialog({
     setPending(true);
     try {
       // Rebuild the discriminated-union `policy` payload the schema expects.
+      const money = {
+        insurer: policy.insurer ?? undefined,
+        policy_number: policy.policy_number ?? undefined,
+        premium_amount: policy.premium_amount ?? undefined,
+        payment_mode: policy.payment_mode ?? undefined,
+        sum_assured: policy.sum_assured ?? undefined,
+        riders: policy.riders,
+      };
+      const base = { client_id: policy.client_id, start_date: policy.start_date, ...money };
       const policyShape =
         policy.policy_type === 'travel'
           ? {
+              ...base,
               policy_type: 'travel' as const,
-              client_id: policy.client_id,
               destination: policy.destination ?? '',
-              start_date: policy.start_date,
-              end_date: policy.end_date,
+              end_date: policy.end_date ?? policy.start_date,
             }
-          : {
-              policy_type: policy.policy_type,
-              client_id: policy.client_id,
-              start_date: policy.start_date,
-              end_date: policy.end_date,
-              renewal_date: policy.renewal_date ?? '',
-            };
+          : policy.policy_type === 'life' || policy.policy_type === 'ci'
+            ? {
+                ...base,
+                policy_type: policy.policy_type,
+                ...(policy.end_date ? { end_date: policy.end_date } : {}),
+              }
+            : {
+                ...base,
+                policy_type: policy.policy_type,
+                end_date: policy.end_date ?? policy.start_date,
+                renewal_date: policy.renewal_date ?? '',
+              };
 
       const result = await cancelPolicyRecord({
         id: policyId,

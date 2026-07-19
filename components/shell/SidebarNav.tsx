@@ -1,13 +1,25 @@
 'use client';
 
+import * as React from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { cn } from '@/lib/utils';
+import { IconSun, IconUsers, IconFileText, IconSettings, IconCalendarClock, IconMessageCircle, IconInbox } from '@/components/ui/icons';
+
+/** label -> icon (nav identity lives here; AppShell's emoji field is ignored). */
+const NAV_ICON: Record<string, React.ComponentType<{ size?: number; className?: string }>> = {
+  Today: IconSun,
+  Clients: IconUsers,
+  Policies: IconFileText,
+  Calendar: IconCalendarClock,
+  Messages: IconMessageCircle,
+  More: IconInbox,
+  Settings: IconSettings,
+};
 
 interface NavItem {
   href: string;
   label: string;
-  emoji: string;
   /** Optional live count (e.g. Today's items needing attention). */
   badge?: number;
 }
@@ -32,20 +44,24 @@ export function SidebarNav({ items }: { items: NavItem[] }) {
             key={item.href}
             href={item.href}
             className={cn(
-              'group flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors',
+              'group relative flex h-8 items-center gap-2.5 rounded px-2.5 text-[13.5px] transition-colors duration-150',
               active
-                ? 'bg-accent text-accent-foreground'
-                : 'text-muted-foreground hover:bg-muted hover:text-foreground',
+                ? 'bg-muted font-medium text-foreground'
+                : 'text-muted-foreground hover:bg-muted/70 hover:text-foreground',
             )}
           >
-            <span className="text-base" aria-hidden>
-              {item.emoji}
-            </span>
+            {active ? (
+              <span className="absolute -left-3 h-4 w-0.5 rounded-full bg-primary" aria-hidden />
+            ) : null}
+            {(() => {
+              const Icon = NAV_ICON[item.label] ?? IconFileText;
+              return <Icon size={16} className={active ? 'text-foreground' : 'text-faint group-hover:text-muted-foreground'} />;
+            })()}
             <span className="flex-1">{item.label}</span>
             {item.badge && item.badge > 0 ? (
               <span
                 className={cn(
-                  'rounded-full px-1.5 py-0.5 text-xs font-semibold tabular-nums',
+                  'rounded px-1.5 py-0.5 text-[11px] font-semibold tabular-nums',
                   active ? 'bg-primary text-primary-foreground' : 'bg-destructive/10 text-destructive',
                 )}
               >

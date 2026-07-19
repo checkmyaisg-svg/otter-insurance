@@ -23,6 +23,7 @@ function travelPolicy(overrides: Partial<PolicyInput> = {}): PolicyInput {
     startDate: '2026-06-10',
     endDate: '2026-06-20',
     renewalDate: null,
+    paymentMode: null,
     status: 'active',
     ...overrides,
   };
@@ -38,6 +39,7 @@ function carPolicy(overrides: Partial<PolicyInput> = {}): PolicyInput {
     startDate: '2026-01-01',
     endDate: '2027-01-01',
     renewalDate: '2026-12-01',
+    paymentMode: null,
     status: 'active',
     ...overrides,
   };
@@ -294,5 +296,179 @@ describe('remindersToCancelForDeactivation — client deletion', () => {
       { id: 's1', policyId: 'x', messageType: 'renewal_30', scheduledAt: '', status: 'sent' },
     ];
     expect(remindersToCancelForDeactivation(existing)).toEqual([]);
+  });
+});
+
+// ----------------------------------------------------------------------------
+// V0.2: Protection behavior (life / ci)
+// ----------------------------------------------------------------------------
+
+import { addMonthsClamped } from './scheduler';
+import type { PlannedReminder } from './scheduler';
+
+function lifePolicy(overrides: Partial<PolicyInput> = {}): PolicyInput {
+  return {
+    id: 'pol-life-1',
+    agentId: 'agent-1',
+    clientId: 'client-1',
+    policyType: 'life',
+    destination: null,
+    startDate: '2020-03-15',
+    endDate: '2060-03-15',
+    renewalDate: null,
+    paymentMode: 'monthly',
+    status: 'active',
+    ...overrides,
+  };
+}
+
+const NOW_V02 = new Date('2026-07-01T00:00:00Z');
+
+describe('addMonthsClamped', () => {
+  it('adds months normally', () => {
+    expect(addMonthsClamped('2026-01-15', 1)).toBe('2026-02-15');
+    expect(addMonthsClamped('2026-11-15', 3)).toBe('2027-02-15');
+  });
+  it('clamps day into short months', () => {
+    expect(addMonthsClamped('2026-01-31', 1)).toBe('2026-02-28');
+    expect(addMonthsClamped('2024-01-31', 1)).toBe('2024-02-29'); // leap year
+    expect(addMonthsClamped('2026-08-31', 1)).toBe('2026-09-30');
+  });
+  it('handles year rollover and Feb-29 anniversaries', () => {
+    expect(addMonthsClamped('2024-02-29', 12)).toBe('2025-02-28');
+    expect(addMonthsClamped('2024-02-29', 48)).toBe('2028-02-29');
+  });
+});
+
+describe('scheduleForPolicy — protection (life/ci)', () => {
+  it('monthly: generates 12 premium_due in horizon + 1 anniversary, all future', () => {
+    const planned = scheduleForPolicy(lifePolicy(), NOW_V02);
+    const premiums = planned.filter((p) => p.messageType === 'premium_due');
+    const annivs = planned.filter((p) => p.messageType === 'anniversary');
+    expect(premiums.length).toBe(12);
+    expect(annivs.length).toBe(1);
+    for (const p of planned) {
+      expect(new Date(p.scheduledAt).getTime()).toBeGreaterThan(NOW_V02.getTime());
+    }
+    // Due dates anchor to the 15th; reminder fires 3 days before at 09:00 SGT (01:00 UTC).
+    expect(premiums[0]!.scheduledAt).toBe('2026-07-12T01:00:00.000Z'); // due Jul 15
+    // Anniversary: next start-date anniversary = 2027-03-15, 09:00 SGT.
+    expect(annivs[0]!.scheduledAt).toBe('2027-03-15T01:00:00.000Z');
+  });
+
+  it('annual mode: exactly 1 premium_due in horizon', () => {
+    const planned = scheduleForPolicy(lifePolicy({ paymentMode: 'annual' }), NOW_V02);
+    expect(planned.filter((p) => p.messageType === 'premium_due').length).toBe(1);
+  });
+
+  it('single premium: no premium_due, still gets anniversary', () => {
+    const planned = scheduleForPolicy(lifePolicy({ paymentMode: 'single' }), NOW_V02);
+    expect(planned.filter((p) => p.messageType === 'premium_due').length).toBe(0);
+    expect(planned.filter((p) => p.messageType === 'anniversary').length).toBe(1);
+  });
+
+  it('missing payment mode: no premium_due, anniversary only (partial data never blocks)', () => {
+    const planned = scheduleForPolicy(lifePolicy({ paymentMode: null }), NOW_V02);
+    expect(planned.filter((p) => p.messageType === 'premium_due').length).toBe(0);
+    expect(planned.filter((p) => p.messageType === 'anniversary').length).toBe(1);
+  });
+
+  it('non-active protection policy schedules nothing', () => {
+    expect(scheduleForPolicy(lifePolicy({ status: 'cancelled' }), NOW_V02)).toEqual([]);
+  });
+
+  it('quarterly cadence lands on anchor day-of-month', () => {
+    const planned = scheduleForPolicy(
+      lifePolicy({ startDate: '2020-01-31', paymentMode: 'quarterly' }),
+      NOW_V02,
+    );
+    const premiums = planned.filter((p) => p.messageType === 'premium_due');
+    expect(premiums.length).toBe(4);
+    // Every due date is the 31st clamped to month length; reminder = due - 3d.
+    // First due after NOW: 2026-07-31 -> fire 2026-07-28 09:00 SGT.
+    expect(premiums[0]!.scheduledAt).toBe('2026-07-28T01:00:00.000Z');
+  });
+
+  it('ci behaves as protection too', () => {
+    const planned = scheduleForPolicy(lifePolicy({ policyType: 'ci' }), NOW_V02);
+    expect(planned.some((p) => p.messageType === 'premium_due')).toBe(true);
+  });
+
+  it('health behaves as renewable (behavior map, not type list)', () => {
+    const planned = scheduleForPolicy(
+      lifePolicy({ policyType: 'health', renewalDate: '2026-12-01', paymentMode: null }),
+      NOW_V02,
+    );
+    const types = planned.map((p) => p.messageType).sort();
+    expect(types).toEqual(['renewal_30', 'renewal_60', 'renewal_7']);
+  });
+});
+
+describe('reconcileReminders — repeating premium_due occurrences', () => {
+  const P = (scheduledAt: string): PlannedReminder => ({
+    policyId: 'pol-life-1',
+    agentId: 'agent-1',
+    clientId: 'client-1',
+    messageType: 'premium_due',
+    scheduledAt,
+    templateName: 'premium_due_v1',
+    idempotencyKey: `pol-life-1:premium_due:${scheduledAt}`,
+  });
+  const E = (id: string, scheduledAt: string, status: 'pending' | 'sent' | 'cancelled'): ExistingReminder => ({
+    id,
+    policyId: 'pol-life-1',
+    messageType: 'premium_due',
+    scheduledAt,
+    status,
+  });
+
+  it('multiple same-type occurrences pair independently (no map collision)', () => {
+    const existing = [E('e1', '2026-07-12T01:00:00.000Z', 'pending'), E('e2', '2026-08-12T01:00:00.000Z', 'pending')];
+    const planned = [P('2026-07-12T01:00:00.000Z'), P('2026-08-12T01:00:00.000Z'), P('2026-09-12T01:00:00.000Z')];
+    const r = reconcileReminders(existing, planned);
+    expect(r.toInsert.length).toBe(1); // only the new September one
+    expect(r.toUpdate.length).toBe(0);
+    expect(r.toCancelIds.length).toBe(0);
+  });
+
+  it('cadence shift cancels stale pending occurrences and inserts new ones', () => {
+    const existing = [E('e1', '2026-07-12T01:00:00.000Z', 'pending')];
+    const planned = [P('2026-07-17T01:00:00.000Z')]; // anchor day moved
+    const r = reconcileReminders(existing, planned);
+    expect(r.toInsert.length).toBe(1);
+    expect(r.toCancelIds).toEqual(['e1']);
+  });
+
+  it('sent occurrences are never touched by a cadence shift', () => {
+    const existing = [E('e1', '2026-07-12T01:00:00.000Z', 'sent')];
+    const planned = [P('2026-08-12T01:00:00.000Z')];
+    const r = reconcileReminders(existing, planned);
+    expect(r.toCancelIds).toEqual([]); // sent row left alone
+    expect(r.toInsert.length).toBe(1);
+  });
+
+  it('cancelled occurrence at the exact same instant is revived via update', () => {
+    const existing = [E('e1', '2026-07-12T01:00:00.000Z', 'cancelled')];
+    const planned = [P('2026-07-12T01:00:00.000Z')];
+    const r = reconcileReminders(existing, planned);
+    expect(r.toInsert.length).toBe(0);
+    expect(r.toUpdate.length).toBe(1);
+    expect(r.toUpdate[0]!.id).toBe('e1');
+  });
+
+  it('single-occurrence types still pair by type alone (regression: renewal move = update)', () => {
+    const existing: ExistingReminder[] = [{
+      id: 'e-r60', policyId: 'p', messageType: 'renewal_60',
+      scheduledAt: '2026-10-02T01:00:00.000Z', status: 'pending',
+    }];
+    const planned: PlannedReminder[] = [{
+      policyId: 'p', agentId: 'a', clientId: 'c', messageType: 'renewal_60',
+      scheduledAt: '2026-11-02T01:00:00.000Z', templateName: 'policy_renewal_v1',
+      idempotencyKey: 'p:renewal_60:2026-11-02T01:00:00.000Z',
+    }];
+    const r = reconcileReminders(existing, planned);
+    expect(r.toUpdate.length).toBe(1); // moved, not cancel+insert
+    expect(r.toInsert.length).toBe(0);
+    expect(r.toCancelIds.length).toBe(0);
   });
 });

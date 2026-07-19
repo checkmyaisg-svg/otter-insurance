@@ -39,10 +39,29 @@ export type ClientUpdateInput = z.infer<typeof clientUpdateSchema>;
 
 // ----------------------------------------------------------------------------
 // POLICIES
-// A discriminated union enforces the same shape the DB CHECK constraints do:
-// travel carries a destination and NO renewal date; car/home carry a renewal
-// date and NO destination. Validated here for friendly errors before the DB.
+// A discriminated union enforces the same shapes the DB CHECK constraints do,
+// grouped by BEHAVIOR (see lib/policies/behavior.ts):
+//   event (travel):              destination, no renewal
+//   renewable (car/home/health): renewal required
+//   protection (life/ci):        no renewal, optional end date
+// Money fields are shared and OPTIONAL everywhere: partial data now beats
+// perfect data never — reminders simply skip what they can't compute.
 // ----------------------------------------------------------------------------
+
+const riderSchema = z.object({
+  name: z.string().trim().min(1).max(200),
+  sum_assured: z.number().positive().optional(),
+});
+
+// Shared, all-optional money/detail fields (V0.2).
+const moneyFields = {
+  insurer: z.string().trim().max(200).optional().or(z.literal('').transform(() => undefined)),
+  policy_number: z.string().trim().max(100).optional().or(z.literal('').transform(() => undefined)),
+  premium_amount: z.number().positive('Premium must be positive.').optional(),
+  payment_mode: z.enum(['monthly', 'quarterly', 'semi_annual', 'annual', 'single']).optional(),
+  sum_assured: z.number().positive('Sum assured must be positive.').optional(),
+  riders: z.array(riderSchema).max(20).default([]),
+};
 
 const travelPolicy = z.object({
   policy_type: z.literal('travel'),
@@ -50,20 +69,30 @@ const travelPolicy = z.object({
   destination: z.string().trim().min(1, 'Destination is required for travel.'),
   start_date: dateString, // departure
   end_date: dateString, // return
+  ...moneyFields,
 });
 
-const coveragePolicy = z.object({
-  policy_type: z.enum(['car', 'home']),
+const renewablePolicy = z.object({
+  policy_type: z.enum(['car', 'home', 'health']),
   client_id: uuid,
   start_date: dateString, // policy start
   end_date: dateString, // policy end
-  renewal_date: dateString, // required for car/home
+  renewal_date: dateString, // required for renewable behavior
+  ...moneyFields,
+});
+
+const protectionPolicy = z.object({
+  policy_type: z.enum(['life', 'ci']),
+  client_id: uuid,
+  start_date: dateString, // inception; anchors premium-due + anniversary
+  end_date: dateString.optional(), // whole-life has none
+  ...moneyFields,
 });
 
 const policyShape = z
-  .discriminatedUnion('policy_type', [travelPolicy, coveragePolicy])
+  .discriminatedUnion('policy_type', [travelPolicy, renewablePolicy, protectionPolicy])
   .refine(
-    (p) => p.end_date >= p.start_date,
+    (p) => !('end_date' in p) || !p.end_date || p.end_date >= p.start_date,
     { message: 'End date cannot be before the start date.', path: ['end_date'] },
   );
 

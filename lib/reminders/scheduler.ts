@@ -18,7 +18,10 @@
 // the assumption lives.
 // ============================================================================
 
-export type PolicyType = 'travel' | 'car' | 'home';
+import { POLICY_BEHAVIOR, PAYMENT_MODE_INTERVAL_MONTHS } from '../policies/behavior';
+import type { PolicyType, PaymentMode } from '../policies/behavior';
+
+export type { PolicyType, PaymentMode };
 export type PolicyStatus = 'active' | 'expired' | 'cancelled';
 
 export type AutomatedMessageType =
@@ -26,7 +29,9 @@ export type AutomatedMessageType =
   | 'travel_return'
   | 'renewal_60'
   | 'renewal_30'
-  | 'renewal_7';
+  | 'renewal_7'
+  | 'premium_due'
+  | 'anniversary';
 
 export type ScheduledStatus =
   | 'pending'
@@ -44,7 +49,9 @@ export interface PolicyInput {
   destination: string | null;
   startDate: string; // travel: departure date | car/home: policy start
   endDate: string; // travel: return date    | car/home: policy end
-  renewalDate: string | null; // car/home only
+  renewalDate: string | null; // renewable types (car/home/health) only
+  /** protection types (life/ci): drives premium-due cadence. Null = no premium reminders. */
+  paymentMode: PaymentMode | null;
   status: PolicyStatus;
 }
 
@@ -88,6 +95,13 @@ export interface ReconcileResult {
 const TRAVEL_DEPARTURE_HOUR_SGT = 8; // 08:00 SGT
 const TRAVEL_RETURN_HOUR_SGT = 18; // 18:00 SGT
 const RENEWAL_HOUR_SGT = 9; // 09:00 SGT
+const PREMIUM_HOUR_SGT = 9; // 09:00 SGT
+const ANNIVERSARY_HOUR_SGT = 9; // 09:00 SGT
+/** Remind this many days BEFORE each premium due date. */
+const PREMIUM_LEAD_DAYS = 3;
+/** How far ahead protection occurrences are generated. Top-up happens on every
+ * policy edit (and later, by the send job) — reconcile keeps it idempotent. */
+const PROTECTION_HORIZON_DAYS = 365;
 
 const RENEWAL_OFFSET_DAYS: Record<'renewal_60' | 'renewal_30' | 'renewal_7', number> = {
   renewal_60: 60,
@@ -101,6 +115,8 @@ const DEFAULT_TEMPLATES: Record<AutomatedMessageType, string> = {
   renewal_60: 'policy_renewal_v1',
   renewal_30: 'policy_renewal_v1',
   renewal_7: 'policy_renewal_v1',
+  premium_due: 'premium_due_v1',
+  anniversary: 'policy_anniversary_v1',
 };
 
 // ----------------------------------------------------------------------------
@@ -133,6 +149,22 @@ export function subtractDays(dateYmd: string, days: number): string {
   }
   d.setUTCDate(d.getUTCDate() - days);
   return d.toISOString().slice(0, 10);
+}
+
+/**
+ * Add N calendar months to a 'YYYY-MM-DD' date, clamping the day to the target
+ * month's length (Jan 31 + 1mo -> Feb 28/29). Uses UTC parts; no tz drift.
+ */
+export function addMonthsClamped(dateYmd: string, months: number): string {
+  const [y, m, d] = dateYmd.split('-').map(Number) as [number, number, number];
+  const targetMonthIndex = m - 1 + months;
+  const targetY = y + Math.floor(targetMonthIndex / 12);
+  const targetM = ((targetMonthIndex % 12) + 12) % 12;
+  // Day 0 of next month = last day of target month.
+  const lastDay = new Date(Date.UTC(targetY, targetM + 1, 0)).getUTCDate();
+  const day = Math.min(d, lastDay);
+  const out = new Date(Date.UTC(targetY, targetM, day));
+  return out.toISOString().slice(0, 10);
 }
 
 /** Deterministic idempotency key. Same policy+type+instant always => same key. */
@@ -186,13 +218,15 @@ export function scheduleForPolicy(policy: PolicyInput, now: Date = new Date()): 
     });
   };
 
-  if (policy.policyType === 'travel') {
+  const behavior = POLICY_BEHAVIOR[policy.policyType];
+
+  if (behavior === 'event') {
     push('travel_departure', buildSgtInstant(policy.startDate, TRAVEL_DEPARTURE_HOUR_SGT));
     push('travel_return', buildSgtInstant(policy.endDate, TRAVEL_RETURN_HOUR_SGT));
-  } else {
-    // car / home — renewalDate is guaranteed non-null by the DB CHECK constraint,
-    // but we guard defensively since this is pure logic that could be called
-    // with unvalidated input in tests or future callers.
+  } else if (behavior === 'renewable') {
+    // car / home / health — renewalDate is guaranteed non-null by the DB CHECK
+    // constraint, but we guard defensively since this is pure logic that could
+    // be called with unvalidated input in tests or future callers.
     if (!policy.renewalDate) {
       throw new Error(`Policy ${policy.id} is ${policy.policyType} but has no renewalDate`);
     }
@@ -202,6 +236,38 @@ export function scheduleForPolicy(policy: PolicyInput, now: Date = new Date()): 
         push(mt, buildSgtInstant(fireDate, RENEWAL_HOUR_SGT));
       },
     );
+  } else {
+    // protection (life / ci):
+    //  - premium_due: one reminder PREMIUM_LEAD_DAYS before each due date within
+    //    the horizon. Due dates advance from startDate by the payment interval,
+    //    with day-of-month clamping. 'single' (or missing) mode => none.
+    //  - anniversary: the next policy anniversary within the horizon.
+    const horizonEnd = new Date(now.getTime() + PROTECTION_HORIZON_DAYS * 86_400_000);
+
+    const interval = policy.paymentMode
+      ? PAYMENT_MODE_INTERVAL_MONTHS[policy.paymentMode]
+      : null;
+    if (interval !== null && interval !== undefined) {
+      // Walk due dates forward from the anchor until past the horizon. Starting
+      // from the anchor keeps every due date aligned to the original day-of-month
+      // (clamped), even for policies that started years ago.
+      for (let k = 1; ; k++) {
+        const dueDate = addMonthsClamped(policy.startDate, k * interval);
+        const fireInstant = buildSgtInstant(subtractDays(dueDate, PREMIUM_LEAD_DAYS), PREMIUM_HOUR_SGT);
+        if (fireInstant.getTime() > horizonEnd.getTime()) break;
+        push('premium_due', fireInstant); // past-date skip handled inside push
+        if (k > 12 * 100) break; // safety valve; unreachable in practice
+      }
+    }
+
+    // Next anniversary: startDate + N years, first occurrence strictly in the future.
+    for (let years = 1; years <= 101; years++) {
+      const anniv = addMonthsClamped(policy.startDate, years * 12);
+      const instant = buildSgtInstant(anniv, ANNIVERSARY_HOUR_SGT);
+      if (instant.getTime() <= now.getTime()) continue;
+      if (instant.getTime() <= horizonEnd.getTime()) push('anniversary', instant);
+      break; // only the next one, whether or not it fell inside the horizon
+    }
   }
 
   return planned;
@@ -235,20 +301,37 @@ const IMMUTABLE_STATUSES: ReadonlySet<ScheduledStatus> = new Set([
  * pending reminders, leaves already-sent ones untouched, and cancels any that
  * no longer apply — all against the (policy_id, message_type) unique constraint.
  */
+/** Types that can occur multiple times per policy (occurrence = type + instant). */
+const REPEATING_TYPES: ReadonlySet<AutomatedMessageType> = new Set(['premium_due']);
+
+/**
+ * Identity of a reminder occurrence for reconciliation pairing.
+ * Single-occurrence types (all renewal/travel/anniversary) pair by TYPE alone —
+ * identical to the original algorithm, so existing behavior is unchanged.
+ * Repeating types (premium_due) pair by TYPE + INSTANT: an edit that shifts the
+ * cadence cancels stale occurrences and inserts new ones, which is the correct
+ * semantic for a recurring series (and the (policy_id, message_type,
+ * scheduled_at) unique index matches this identity).
+ */
+function occurrenceKey(messageType: AutomatedMessageType, scheduledAt: string): string {
+  return REPEATING_TYPES.has(messageType) ? `${messageType}@${scheduledAt}` : messageType;
+}
+
 export function reconcileReminders(
   existing: ExistingReminder[],
   planned: PlannedReminder[],
 ): ReconcileResult {
   const result: ReconcileResult = { toInsert: [], toUpdate: [], toCancelIds: [] };
 
-  const existingByType = new Map<AutomatedMessageType, ExistingReminder>();
-  for (const e of existing) existingByType.set(e.messageType, e);
+  const existingByKey = new Map<string, ExistingReminder>();
+  for (const e of existing) existingByKey.set(occurrenceKey(e.messageType, e.scheduledAt), e);
 
-  const plannedTypes = new Set<AutomatedMessageType>();
+  const plannedKeys = new Set<string>();
 
   for (const p of planned) {
-    plannedTypes.add(p.messageType);
-    const match = existingByType.get(p.messageType);
+    const key = occurrenceKey(p.messageType, p.scheduledAt);
+    plannedKeys.add(key);
+    const match = existingByKey.get(key);
 
     if (!match) {
       result.toInsert.push(p);
@@ -268,10 +351,10 @@ export function reconcileReminders(
     // else: pending row already at the correct time -> no-op.
   }
 
-  // Cancel pending rows whose type is no longer planned (e.g. travel -> car edit,
-  // or a renewal reminder that is now in the past after an edit).
+  // Cancel pending rows whose occurrence is no longer planned (e.g. travel ->
+  // car edit, a renewal now in the past, or a premium occurrence that moved).
   for (const e of existing) {
-    if (!plannedTypes.has(e.messageType) && e.status === 'pending') {
+    if (!plannedKeys.has(occurrenceKey(e.messageType, e.scheduledAt)) && e.status === 'pending') {
       result.toCancelIds.push(e.id);
     }
   }

@@ -1,4 +1,3 @@
-import { ClientPlatformBadge } from './ClientPlatformBadge';
 import { formatDate } from '@/lib/format/display';
 import type { ClientListItem } from '@/lib/data/clients';
 
@@ -17,19 +16,9 @@ function Field({ label, value }: { label: string; value: React.ReactNode }) {
 /** Personal-details card for a single client. Presentational only. */
 export function ClientDetailCard({ client }: { client: ClientListItem }) {
   return (
-    <div className="rounded-lg border bg-card p-6">
-      <dl className="grid grid-cols-1 gap-5 sm:grid-cols-2">
-        <Field label="Full name" value={client.full_name} />
-        <Field
-          label="Phone"
-          value={<span className="tabular-nums">{client.phone_number}</span>}
-        />
-        <Field label="Email" value={client.email || '—'} />
+    <div className="rounded-xl bg-card shadow-[0_0_0_1px_rgba(255,255,255,0.04),0_2px_8px_rgba(0,0,0,0.35)] p-4">
+      <dl className="grid grid-cols-2 gap-4">
         <Field label="Birthday" value={formatDate(client.birthday)} />
-        <Field
-          label="Preferred platform"
-          value={<ClientPlatformBadge platform={client.preferred_platform} />}
-        />
         <Field label="Client since" value={formatDate(client.created_at)} />
       </dl>
 

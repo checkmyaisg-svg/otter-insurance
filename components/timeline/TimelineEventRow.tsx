@@ -16,11 +16,11 @@ const TONE_DOT: Record<TimelineTone, string> = {
  */
 export function TimelineEventRow({ event }: { event: TimelineEvent }) {
   return (
-    <li className="relative flex gap-3 pb-6 last:pb-0">
+    <li className="group relative flex gap-3 pb-6 last:pb-0">
       {/* connector line */}
-      <div className="absolute left-[5px] top-3 h-full w-px bg-border last:hidden" aria-hidden />
+      <div className="absolute left-[5px] top-3 h-full w-px bg-border group-last:hidden" aria-hidden />
       <span
-        className={`relative mt-1.5 h-2.5 w-2.5 shrink-0 rounded-full ${TONE_DOT[event.tone]}`}
+        className={`relative mt-1.5 h-2.5 w-2.5 shrink-0 rounded-full ring-4 ring-background ${TONE_DOT[event.tone]}`}
         aria-hidden
       />
       <div className="min-w-0 flex-1">

@@ -9,7 +9,7 @@ import type { TimelineEvent } from '@/lib/data/timeline';
 export function CustomerTimeline({ events }: { events: TimelineEvent[] }) {
   if (events.length === 0) {
     return (
-      <div className="rounded-md border border-dashed p-6 text-center">
+      <div className="rounded-lg bg-muted/50 p-6 text-center">
         <p className="text-sm text-muted-foreground">
           No timeline events yet. Add a policy to start this client&apos;s journey.
         </p>

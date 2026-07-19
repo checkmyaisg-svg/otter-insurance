@@ -1,10 +1,22 @@
 'use client';
 
+import * as React from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { cn } from '@/lib/utils';
+import { IconSun, IconUsers, IconFileText, IconSettings, IconCalendarClock, IconMessageCircle, IconInbox } from '@/components/ui/icons';
 
-interface NavItem { href: string; label: string; emoji: string; badge?: number }
+const NAV_ICON: Record<string, React.ComponentType<{ size?: number; className?: string }>> = {
+  Today: IconSun,
+  Clients: IconUsers,
+  Policies: IconFileText,
+  Calendar: IconCalendarClock,
+  Messages: IconMessageCircle,
+  More: IconInbox,
+  Settings: IconSettings,
+};
+
+interface NavItem { href: string; label: string; badge?: number }
 
 /**
  * Mobile bottom tab bar — thumb-reachable primary navigation, native-app style.
@@ -18,7 +30,7 @@ export function BottomNav({ items }: { items: NavItem[] }) {
 
   return (
     <nav
-      className="fixed inset-x-0 bottom-0 z-40 flex border-t bg-card/95 backdrop-blur md:hidden"
+      className="fixed inset-x-0 bottom-0 z-40 flex border-t !border-white/[0.06] bg-sidebar/95 backdrop-blur md:hidden"
       style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
       aria-label="Primary"
     >
@@ -29,14 +41,14 @@ export function BottomNav({ items }: { items: NavItem[] }) {
             key={item.href}
             href={item.href}
             className={cn(
-              'relative flex flex-1 flex-col items-center justify-center gap-0.5 py-2.5 text-[11px] font-medium transition-colors',
+              'relative flex min-h-[52px] flex-1 flex-col items-center justify-center gap-0.5 py-2 text-[10.5px] font-medium transition-colors duration-150',
               active ? 'text-primary' : 'text-muted-foreground',
             )}
           >
-            <span className="relative text-lg leading-none" aria-hidden>
-              {item.emoji}
+            <span className="relative leading-none" aria-hidden>
+              {(() => { const Icon = NAV_ICON[item.label] ?? IconFileText; return <Icon size={20} />; })()}
               {item.badge && item.badge > 0 ? (
-                <span className="absolute -right-2 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-[9px] font-bold text-destructive-foreground">
+                <span className="absolute -right-2 -top-1 flex h-4 min-w-4 items-center justify-center rounded bg-destructive px-1 text-[9px] font-bold text-destructive-foreground">
                   {item.badge}
                 </span>
               ) : null}

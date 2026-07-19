@@ -33,19 +33,16 @@ import {
  *    the same way as a second line of defense.
  */
 
+import type { PolicyCreateInput } from '@/lib/validation/schemas';
+
 // Build the scheduler's PolicyInput from validated data + a known id/agent.
+// The shape is the behavior-grouped union from the zod schema:
+//   travel: destination + dates | car/home/health: + renewal | life/ci: no renewal.
 function toPolicyInput(
   id: string,
   agentId: string,
   clientId: string,
-  shape:
-    | { policy_type: 'travel'; destination: string; start_date: string; end_date: string }
-    | {
-        policy_type: 'car' | 'home';
-        start_date: string;
-        end_date: string;
-        renewal_date: string;
-      },
+  shape: PolicyCreateInput,
   status: 'active' | 'expired' | 'cancelled',
 ): PolicyInput {
   return {
@@ -55,9 +52,24 @@ function toPolicyInput(
     policyType: shape.policy_type,
     destination: shape.policy_type === 'travel' ? shape.destination : null,
     startDate: shape.start_date,
-    endDate: shape.end_date,
-    renewalDate: shape.policy_type === 'travel' ? null : shape.renewal_date,
+    // Protection may have no end date; scheduler doesn't use it for protection.
+    endDate: 'end_date' in shape && shape.end_date ? shape.end_date : shape.start_date,
+    renewalDate: 'renewal_date' in shape ? shape.renewal_date : null,
+    paymentMode: shape.payment_mode ?? null,
     status,
+  };
+}
+
+// Serialize the shared money fields for the RPC's jsonb payload. Numbers go as
+// strings (the RPC casts via nullif(...)::numeric); riders pass as JSON.
+function moneyFieldsPayload(shape: PolicyCreateInput) {
+  return {
+    insurer: shape.insurer ?? null,
+    policy_number: shape.policy_number ?? null,
+    premium_amount: shape.premium_amount != null ? String(shape.premium_amount) : null,
+    payment_mode: shape.payment_mode ?? null,
+    sum_assured: shape.sum_assured != null ? String(shape.sum_assured) : null,
+    riders: shape.riders ?? [],
   };
 }
 
@@ -90,9 +102,10 @@ export async function createPolicyRecord(
       policy_type: shape.policy_type,
       destination: policyInput.destination,
       start_date: shape.start_date,
-      end_date: shape.end_date,
+      end_date: 'end_date' in shape && shape.end_date ? shape.end_date : null,
       renewal_date: policyInput.renewalDate,
       status: 'active',
+      ...moneyFieldsPayload(shape),
     },
     p_reminders: planned.map((p) => ({
       messageType: p.messageType,
@@ -149,9 +162,10 @@ export async function updatePolicyRecord(
       policy_type: shape.policy_type,
       destination: policyInput.destination,
       start_date: shape.start_date,
-      end_date: shape.end_date,
+      end_date: 'end_date' in shape && shape.end_date ? shape.end_date : null,
       renewal_date: policyInput.renewalDate,
       status,
+      ...moneyFieldsPayload(shape),
     },
     p_inserts: diff.toInsert.map((p) => ({
       messageType: p.messageType,

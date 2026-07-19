@@ -1,4 +1,7 @@
 import { createClient } from '@/lib/supabase/server';
+import { daysUntilBirthday, nextBirthdayDate } from '@/lib/dates/birthday';
+import { POLICY_TYPE_LABEL, type PolicyType } from '@/lib/policies/behavior';
+import { buildDraftMessage, draftKindForMessageType, firstNameOf } from '@/lib/whatsapp/templates';
 
 /**
  * DASHBOARD ENGINE (Task Engine, V1 — derived)
@@ -22,7 +25,9 @@ export type TodayItemKind =
   | 'renewal_follow_up'
   | 'scheduled_today'
   | 'travel_departure'
-  | 'upcoming_renewal';
+  | 'upcoming_renewal'
+  | 'recent_activity'
+  | 'birthday';
 
 export interface TodayItem {
   id: string;
@@ -40,6 +45,8 @@ export interface TodayItem {
   /** Where the action goes. ACTION VIEW SEAM — swap target later, no UI change. */
   href: string;
   tone: TodayTone;
+  /** Prefilled WhatsApp draft for this item (null when no template applies). */
+  draft: { phone: string | null; message: string; policyId: string | null } | null;
 }
 
 export interface TodaySection {
@@ -90,6 +97,8 @@ function relativeStatus(days: number): string {
  * query to this agent, so no agent_id filters are needed. Returns everything the
  * renderer needs; the renderer computes nothing.
  */
+
+
 export async function getToday(): Promise<TodayData> {
   const supabase = await createClient();
   const today = todayYmd();
@@ -97,12 +106,17 @@ export async function getToday(): Promise<TodayData> {
   const in30 = addDays(today, 30);
   const monthEnd = addDays(today, 31);
 
-  const [{ data: userData }, clientsRes, policiesRes, remindersRes] = await Promise.all([
+  const [{ data: userData }, clientsRes, birthdayClientsRes, policiesRes, remindersRes] = await Promise.all([
     supabase.auth.getUser(),
     supabase.from('clients').select('id', { count: 'exact', head: true }).is('deleted_at', null),
     supabase
+      .from('clients')
+      .select('id, full_name, phone_number, birthday')
+      .is('deleted_at', null)
+      .not('birthday', 'is', null),
+    supabase
       .from('policies')
-      .select('id, client_id, policy_type, destination, start_date, end_date, renewal_date, status, clients(full_name)')
+      .select('id, client_id, policy_type, destination, start_date, end_date, renewal_date, insurer, status, clients(full_name, phone_number)')
       .eq('status', 'active'),
     supabase
       .from('scheduled_messages')
@@ -118,17 +132,31 @@ export async function getToday(): Promise<TodayData> {
 
   type PolicyRow = {
     id: string; client_id: string; policy_type: string; destination: string | null;
-    start_date: string; end_date: string; renewal_date: string | null; status: string;
-    clients: { full_name: string } | null;
+    start_date: string; end_date: string | null; renewal_date: string | null; insurer: string | null; status: string;
+    clients: { full_name: string; phone_number: string | null } | null;
   };
   type ReminderRow = {
     id: string; client_id: string; policy_id: string | null; message_type: string;
-    scheduled_at: string; status: string; clients: { full_name: string } | null;
+    scheduled_at: string; status: string; clients: { full_name: string; phone_number: string | null } | null;
   };
   const policies = (policiesRes.data ?? []) as unknown as PolicyRow[];
   const reminders = (remindersRes.data ?? []) as unknown as ReminderRow[];
 
   const nameOf = (c: { full_name: string } | null) => c?.full_name ?? 'Unknown client';
+  const phoneOf = (c: { phone_number?: string | null } | null) => c?.phone_number ?? null;
+
+  // Build a renewal draft for a policy row (shared by overdue/follow-up/upcoming).
+  const renewalDraft = (p: PolicyRow, overdue: boolean) => ({
+    phone: phoneOf(p.clients),
+    policyId: p.id,
+    message: buildDraftMessage('renewal', {
+      clientFirstName: firstNameOf(nameOf(p.clients)),
+      policyLabel: POLICY_TYPE_LABEL[p.policy_type as PolicyType] ?? 'insurance',
+      dateText: p.renewal_date ? fmt(p.renewal_date) : '',
+      insurer: p.insurer,
+      overdue,
+    }),
+  });
 
   // --- 1. Needs Attention: overdue renewals + failed messages ---
   const needsAttention: TodayItem[] = [];
@@ -140,12 +168,13 @@ export async function getToday(): Promise<TodayData> {
         kind: 'overdue_renewal',
         clientId: p.client_id,
         clientName: nameOf(p.clients),
-        reason: `${p.policy_type === 'car' ? 'Car' : 'Home'} policy renewal is overdue`,
+        reason: `${POLICY_TYPE_LABEL[p.policy_type as PolicyType] ?? 'Policy'} policy renewal is overdue`,
         dateLabel: `Renewal was ${fmt(p.renewal_date)}`,
         status: `${d}d overdue`,
         actionLabel: 'Review renewal',
         href: `/policies/${p.id}`,
         tone: 'urgent',
+        draft: renewalDraft(p, true),
       });
     }
   }
@@ -162,6 +191,7 @@ export async function getToday(): Promise<TodayData> {
         actionLabel: 'Investigate',
         href: r.policy_id ? `/policies/${r.policy_id}` : `/clients/${r.client_id}`,
         tone: 'urgent',
+        draft: null,
       });
     }
   }
@@ -183,14 +213,35 @@ export async function getToday(): Promise<TodayData> {
         actionLabel: 'Follow up',
         href: `/policies/${p.id}`,
         tone: 'warning',
+        draft: renewalDraft(p, false),
       });
     }
   }
 
   // --- 3. Scheduled Today: reminders with scheduled_at = today, still pending ---
   const scheduledToday: TodayItem[] = [];
+  const policyById = new Map(policies.map((p) => [p.id, p]));
   for (const r of reminders) {
     if (r.status === 'pending' && r.scheduled_at.slice(0, 10) === today) {
+      const kind = draftKindForMessageType(r.message_type);
+      const pol = r.policy_id ? policyById.get(r.policy_id) : undefined;
+      const draft = kind
+        ? {
+            phone: phoneOf(r.clients),
+            policyId: r.policy_id,
+            message: buildDraftMessage(kind, {
+              clientFirstName: firstNameOf(nameOf(r.clients)),
+              policyLabel: pol
+                ? POLICY_TYPE_LABEL[pol.policy_type as PolicyType] ?? 'insurance'
+                : 'insurance',
+              dateText: pol?.renewal_date
+                ? fmt(pol.renewal_date)
+                : fmt(r.scheduled_at.slice(0, 10)),
+              destination: pol?.destination ?? null,
+              insurer: pol?.insurer ?? null,
+            }),
+          }
+        : null;
       scheduledToday.push({
         id: `sched-${r.id}`,
         kind: 'scheduled_today',
@@ -202,6 +253,7 @@ export async function getToday(): Promise<TodayData> {
         actionLabel: 'View',
         href: r.policy_id ? `/policies/${r.policy_id}` : `/clients/${r.client_id}`,
         tone: 'info',
+        draft,
       });
     }
   }
@@ -222,6 +274,16 @@ export async function getToday(): Promise<TodayData> {
         actionLabel: 'View policy',
         href: `/policies/${p.id}`,
         tone: 'info',
+        draft: {
+          phone: phoneOf(p.clients),
+          policyId: p.id,
+          message: buildDraftMessage('travel_departure', {
+            clientFirstName: firstNameOf(nameOf(p.clients)),
+            policyLabel: 'Travel',
+            dateText: fmt(p.start_date),
+            destination: p.destination,
+          }),
+        },
       });
     }
   }
@@ -236,15 +298,75 @@ export async function getToday(): Promise<TodayData> {
         kind: 'upcoming_renewal',
         clientId: p.client_id,
         clientName: nameOf(p.clients),
-        reason: `${p.policy_type === 'car' ? 'Car' : 'Home'} renewal coming up`,
+        reason: `${POLICY_TYPE_LABEL[p.policy_type as PolicyType] ?? 'Policy'} renewal coming up`,
         dateLabel: `Renews ${fmt(p.renewal_date)}`,
         status: relativeStatus(d),
         actionLabel: 'View policy',
         href: `/policies/${p.id}`,
         tone: 'neutral',
+        draft: renewalDraft(p, false),
       });
     }
   }
+
+  // --- Recent activity: the assistant reports what HAPPENED, not just what's due.
+  const recentActivity: TodayItem[] = reminders
+    .filter((r) => r.status === 'sent')
+    .sort((a, b) => (b.scheduled_at < a.scheduled_at ? -1 : 1))
+    .slice(0, 5)
+    .map((r) => {
+      const isWa = r.message_type === 'manual';
+      const kindLabel = isWa
+        ? 'WhatsApp message sent'
+        : `${draftKindForMessageType(r.message_type)?.replace('_', ' ') ?? r.message_type} reminder sent`;
+      return {
+        id: `recent-${r.id}`,
+        kind: 'recent_activity' as const,
+        clientId: r.client_id,
+        clientName: nameOf(r.clients),
+        reason: kindLabel,
+        dateLabel: fmt(r.scheduled_at.slice(0, 10)),
+        actionLabel: 'View',
+        href: r.policy_id ? `/policies/${r.policy_id}` : `/clients/${r.client_id}`,
+        tone: 'neutral' as const,
+        status: 'sent',
+        draft: null,
+      };
+    });
+
+  // --- Birthdays this week: computed LIVE from client records (no reminder
+  // rows needed — birthdays recur; the reminder engine handles policy events).
+  type BirthdayClient = { id: string; full_name: string; phone_number: string | null; birthday: string };
+  const birthdays: TodayItem[] = ((birthdayClientsRes.data ?? []) as unknown as BirthdayClient[])
+    .map((c) => ({ c, days: daysUntilBirthday(c.birthday, today) }))
+    .filter(({ days }) => days >= 0 && days <= 6)
+    .sort((a, b) => a.days - b.days)
+    .map(({ c, days }) => {
+      const when = days === 0 ? 'Today' : days === 1 ? 'Tomorrow' : fmt(nextBirthdayDate(c.birthday, today));
+      return {
+        id: `bday-${c.id}`,
+        kind: 'birthday' as const,
+        clientId: c.id,
+        clientName: c.full_name,
+        reason: days === 0 ? 'Birthday today — send your wishes' : 'Birthday coming up',
+        dateLabel: when,
+        actionLabel: 'View client',
+        href: `/clients/${c.id}`,
+        tone: (days === 0 ? 'info' : 'neutral') as TodayTone,
+        status: days === 0 ? 'Today' : `In ${days} day${days === 1 ? '' : 's'}`,
+        draft: c.phone_number
+          ? {
+              phone: c.phone_number,
+              policyId: null,
+              message: buildDraftMessage('birthday', {
+                clientFirstName: firstNameOf(c.full_name),
+                policyLabel: '',
+                dateText: '',
+              }),
+            }
+          : { phone: null, policyId: null, message: buildDraftMessage('birthday', { clientFirstName: firstNameOf(c.full_name), policyLabel: '', dateText: '' }) },
+      };
+    });
 
   // stats
   const renewalsThisMonth = policies.filter(
@@ -253,11 +375,13 @@ export async function getToday(): Promise<TodayData> {
   const remindersPending = reminders.filter((r) => r.status === 'pending').length;
 
   const sections: TodaySection[] = [
-    { key: 'attention', title: 'Needs attention', emoji: '🔴', items: needsAttention },
-    { key: 'followup', title: 'Follow up today', emoji: '🟡', items: followUp },
-    { key: 'scheduled', title: 'Scheduled today', emoji: '📤', items: scheduledToday },
-    { key: 'travel', title: 'Upcoming travel', emoji: '✈️', items: upcomingTravel },
-    { key: 'renewals', title: 'Upcoming renewals', emoji: '📅', items: upcomingRenewals },
+    { key: 'attention', title: 'Needs attention', emoji: '', items: needsAttention },
+    { key: 'birthdays', title: 'Birthdays this week', emoji: '', items: birthdays },
+    { key: 'scheduled', title: "Today's schedule", emoji: '', items: scheduledToday },
+    { key: 'renewals', title: 'Upcoming renewals', emoji: '', items: upcomingRenewals },
+    { key: 'followup', title: 'Follow-ups', emoji: '', items: followUp },
+    { key: 'travel', title: 'Upcoming travel', emoji: '', items: upcomingTravel },
+    { key: 'recent', title: 'Recent activity', emoji: '', items: recentActivity },
   ];
 
   return {
@@ -284,6 +408,8 @@ function labelReminder(t: string): string {
     case 'renewal_60': return 'Renewal reminder (60 days) goes out';
     case 'renewal_30': return 'Renewal reminder (30 days) goes out';
     case 'renewal_7': return 'Renewal reminder (7 days) goes out';
+    case 'premium_due': return 'Premium due reminder goes out';
+    case 'anniversary': return 'Policy anniversary message goes out';
     default: return 'Scheduled message goes out';
   }
 }

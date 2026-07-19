@@ -1,3 +1,4 @@
+import { formatDate } from '@/lib/format/display';
 import { createClient } from '@/lib/supabase/server';
 import type { PolicyListItem } from '@/lib/data/policies';
 
@@ -48,6 +49,8 @@ const REMINDER_LABEL: Record<string, string> = {
   renewal_60: 'Renewal reminder (60 days)',
   renewal_30: 'Renewal reminder (30 days)',
   renewal_7: 'Renewal reminder (7 days)',
+  premium_due: 'Premium due reminder',
+  anniversary: 'Policy anniversary',
   manual: 'Manual message',
 };
 
@@ -73,7 +76,7 @@ export async function getClientTimeline(
 
   const { data: reminders, error } = await supabase
     .from('scheduled_messages')
-    .select('id, policy_id, message_type, scheduled_at, status, created_at')
+    .select('id, policy_id, message_type, scheduled_at, status, created_at, template_name')
     .eq('client_id', clientId)
     .order('scheduled_at', { ascending: true });
   if (error) throw new Error(error.message);
@@ -83,10 +86,13 @@ export async function getClientTimeline(
 
   // policy_created events
   for (const p of policies) {
+    const TYPE_LABEL: Record<string, string> = {
+      travel: 'Travel', car: 'Car', home: 'Home', life: 'Life', health: 'Health', ci: 'Critical Illness',
+    };
     const label =
       p.policy_type === 'travel'
         ? `Travel policy created${p.destination ? ` — ${p.destination}` : ''}`
-        : `${p.policy_type === 'car' ? 'Car' : 'Home'} policy created`;
+        : `${TYPE_LABEL[p.policy_type] ?? p.policy_type} policy created`;
     events.push({
       id: `policy-${p.id}`,
       kind: 'policy_created',
@@ -95,8 +101,10 @@ export async function getClientTimeline(
       title: label,
       detail:
         p.policy_type === 'travel'
-          ? `Departs ${p.start_date}, returns ${p.end_date}`
-          : `Renews ${p.renewal_date ?? '—'}`,
+          ? `Departs ${formatDate(p.start_date)}, returns ${formatDate(p.end_date)}`
+          : p.renewal_date
+            ? `Renews ${formatDate(p.renewal_date)}`
+            : `Since ${formatDate(p.start_date)}`,
       tone: 'neutral',
     });
   }
@@ -110,8 +118,14 @@ export async function getClientTimeline(
       kind: 'reminder_scheduled',
       at,
       scheduled: new Date(at).getTime() > now && status === 'pending',
-      title: REMINDER_LABEL[r.message_type as string] ?? (r.message_type as string),
-      detail: `Status: ${status}`,
+      title:
+        r.message_type === 'manual' && (r.template_name as string | null)?.startsWith('wa_draft')
+          ? 'WhatsApp message'
+          : REMINDER_LABEL[r.message_type as string] ?? (r.message_type as string),
+      detail:
+        r.message_type === 'manual' && (r.template_name as string | null)?.startsWith('wa_draft')
+          ? 'Opened in WhatsApp by you'
+          : `Status: ${status}`,
       tone: STATUS_TONE[status] ?? 'neutral',
     });
   }

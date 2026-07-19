@@ -21,10 +21,13 @@ export function DashboardHeader({ data }: { data: TodayData }) {
 
   return (
     <div className="mb-8">
-      <h1 className="text-2xl font-semibold">
-        {greeting} {agentName} <span aria-hidden>👋</span>
+      <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+        {new Date(Date.now() + 8 * 3600 * 1000).toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'UTC' })}
+      </p>
+      <h1 className="mt-1 text-2xl font-semibold tracking-tight">
+        {greeting}, {agentName}
       </h1>
-      <p className="mt-1 text-muted-foreground">{sentence}</p>
+      <p className="mt-1.5 text-[15px] text-muted-foreground">{sentence}</p>
     </div>
   );
 }

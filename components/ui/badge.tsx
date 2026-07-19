@@ -7,14 +7,14 @@ type BadgeProps = React.HTMLAttributes<HTMLSpanElement> & {
 
 export function Badge({ className, variant = 'secondary', ...props }: BadgeProps) {
   const variants = {
-    default: 'bg-primary text-primary-foreground',
-    secondary: 'bg-secondary text-secondary-foreground',
-    outline: 'border border-input text-foreground',
+    default: 'bg-primary/10 text-primary',
+    secondary: 'bg-white/[0.06] text-muted-foreground',
+    outline: 'bg-faint/10 text-faint',
   };
   return (
     <span
       className={cn(
-        'inline-flex items-center whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-medium leading-none',
+        'inline-flex h-[18px] items-center whitespace-nowrap rounded px-1.5 text-[11px] font-medium leading-none',
         variants[variant],
         className,
       )}
