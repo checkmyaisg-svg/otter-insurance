@@ -29,6 +29,7 @@ interface StaticItem {
 
 const STATIC_ITEMS: StaticItem[] = [
   { id: 'nav-today', group: 'Navigate', title: 'Today', subtitle: 'G T', href: '/', keywords: 'today dashboard home' },
+  { id: 'nav-revenue', group: 'Navigate', title: 'Revenue', subtitle: '', href: '/revenue', keywords: 'revenue income pipeline money book' },
   { id: 'nav-clients', group: 'Navigate', title: 'Clients', subtitle: 'G C', href: '/clients', keywords: 'clients people directory' },
   { id: 'nav-policies', group: 'Navigate', title: 'Policies', subtitle: 'G P', href: '/policies', keywords: 'policies book' },
   { id: 'nav-settings', group: 'Navigate', title: 'Settings', subtitle: 'G S', href: '/settings', keywords: 'settings profile account' },

@@ -4,6 +4,9 @@ import { getClientById } from '@/lib/data/clients';
 import { getPoliciesForClient } from '@/lib/data/policies';
 import { getClientTimeline } from '@/lib/data/timeline';
 import { ClientDetailCard } from '@/components/clients/ClientDetailCard';
+import { IntelligencePanel } from '@/components/clients/IntelligencePanel';
+import { getClientIntelligence } from '@/lib/data/intelligence';
+import { QuickLog } from '@/components/clients/QuickLog';
 import { ClientPlatformBadge } from '@/components/clients/ClientPlatformBadge';
 import { ClientPoliciesSection } from '@/components/clients/ClientPoliciesSection';
 import { CustomerTimeline } from '@/components/timeline/CustomerTimeline';
@@ -30,6 +33,7 @@ export default async function ClientDetailPage({
 
   const policies = await getPoliciesForClient(id);
   const timeline = await getClientTimeline(id, policies);
+  const intel = await getClientIntelligence(client.id);
 
   return (
     <main className="mx-auto max-w-[960px] p-6 md:p-8">
@@ -50,6 +54,7 @@ export default async function ClientDetailPage({
               {policies.length} {policies.length === 1 ? 'policy' : 'policies'}
             </span>
           </p>
+          <QuickLog clientId={client.id} />
         </div>
         <div className="flex items-center gap-2">
           <Button asChild variant="outline">
@@ -60,6 +65,8 @@ export default async function ClientDetailPage({
       </div>
 
       <div className="space-y-6">
+        {intel ? <IntelligencePanel view={intel} clientId={client.id} clientName={client.full_name} /> : null}
+
         <ClientDetailCard client={client} />
 
         <ClientPoliciesSection clientId={client.id} policies={policies} />

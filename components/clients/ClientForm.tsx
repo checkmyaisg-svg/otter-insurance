@@ -16,6 +16,8 @@ export interface ClientFormValues {
   email: string;
   birthday: string;
   preferred_platform: 'whatsapp' | 'wechat' | 'telegram';
+  occupation: string;
+  dependants: string; // numeric input as string
   notes: string;
 }
 
@@ -25,6 +27,8 @@ const EMPTY: ClientFormValues = {
   email: '',
   birthday: '',
   preferred_platform: 'whatsapp',
+  occupation: '',
+  dependants: '',
   notes: '',
 };
 
@@ -181,6 +185,34 @@ export function ClientForm({
         <p className="text-xs text-muted-foreground">
           Only WhatsApp sends are active in this version.
         </p>
+      </div>
+
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <div className="space-y-1.5">
+          <Label htmlFor="occupation">Occupation</Label>
+          <Input
+            id="occupation"
+            type="text"
+            value={values.occupation}
+            onChange={set('occupation')}
+            disabled={pending}
+            placeholder="e.g. Teacher"
+          />
+        </div>
+        <div className="space-y-1.5">
+          <Label htmlFor="dependants">Dependants</Label>
+          <Input
+            id="dependants"
+            type="number"
+            inputMode="numeric"
+            min={0}
+            max={20}
+            value={values.dependants}
+            onChange={set('dependants')}
+            disabled={pending}
+            placeholder="0"
+          />
+        </div>
       </div>
 
       <div className="space-y-1.5">

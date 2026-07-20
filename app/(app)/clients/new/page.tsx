@@ -15,6 +15,8 @@ export default function NewClientPage() {
       email: values.email || undefined,
       birthday: values.birthday || undefined,
       preferred_platform: values.preferred_platform,
+      occupation: values.occupation || undefined,
+      dependants: values.dependants === '' ? undefined : Number(values.dependants),
       notes: values.notes || undefined,
     });
   }

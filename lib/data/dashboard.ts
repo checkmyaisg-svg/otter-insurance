@@ -1,5 +1,7 @@
 import { createClient } from '@/lib/supabase/server';
 import { daysUntilBirthday, nextBirthdayDate } from '@/lib/dates/birthday';
+import { classifyQuiet, annualizedPremium } from '@/lib/intelligence/portfolio';
+import { buildBriefing, type Briefing, type PortfolioClient } from '@/lib/intelligence/briefing';
 import { POLICY_TYPE_LABEL, type PolicyType } from '@/lib/policies/behavior';
 import { buildDraftMessage, draftKindForMessageType, firstNameOf } from '@/lib/whatsapp/templates';
 
@@ -27,7 +29,8 @@ export type TodayItemKind =
   | 'travel_departure'
   | 'upcoming_renewal'
   | 'recent_activity'
-  | 'birthday';
+  | 'birthday'
+  | 'gone_quiet';
 
 export interface TodayItem {
   id: string;
@@ -57,6 +60,7 @@ export interface TodaySection {
 }
 
 export interface TodayData {
+  briefing: Briefing;
   agentName: string;
   stats: { clients: number; activePolicies: number; renewalsThisMonth: number; remindersPending: number };
   summary: { urgent: number; followUps: number; scheduledToday: number };
@@ -106,18 +110,21 @@ export async function getToday(): Promise<TodayData> {
   const in30 = addDays(today, 30);
   const monthEnd = addDays(today, 31);
 
-  const [{ data: userData }, clientsRes, birthdayClientsRes, policiesRes, remindersRes] = await Promise.all([
+  const [{ data: userData }, clientsRes, birthdayClientsRes, policiesRes, remindersRes, sentHistoryRes] = await Promise.all([
     supabase.auth.getUser(),
     supabase.from('clients').select('id', { count: 'exact', head: true }).is('deleted_at', null),
     supabase
       .from('clients')
-      .select('id, full_name, phone_number, birthday')
-      .is('deleted_at', null)
-      .not('birthday', 'is', null),
+      .select('id, full_name, phone_number, birthday, created_at')
+      .is('deleted_at', null),
     supabase
       .from('policies')
-      .select('id, client_id, policy_type, destination, start_date, end_date, renewal_date, insurer, status, clients(full_name, phone_number)')
+      .select('id, client_id, policy_type, destination, start_date, end_date, renewal_date, insurer, status, premium_amount, payment_mode, clients(full_name, phone_number)')
       .eq('status', 'active'),
+    supabase
+      .from('scheduled_messages')
+      .select('client_id, scheduled_at')
+      .eq('status', 'sent'),
     supabase
       .from('scheduled_messages')
       .select('id, client_id, policy_id, message_type, scheduled_at, status, clients(full_name)'),
@@ -336,13 +343,14 @@ export async function getToday(): Promise<TodayData> {
 
   // --- Birthdays this week: computed LIVE from client records (no reminder
   // rows needed — birthdays recur; the reminder engine handles policy events).
-  type BirthdayClient = { id: string; full_name: string; phone_number: string | null; birthday: string };
+  type BirthdayClient = { id: string; full_name: string; phone_number: string | null; birthday: string | null; created_at: string };
   const birthdays: TodayItem[] = ((birthdayClientsRes.data ?? []) as unknown as BirthdayClient[])
-    .map((c) => ({ c, days: daysUntilBirthday(c.birthday, today) }))
+    .filter((c) => c.birthday != null)
+    .map((c) => ({ c, days: daysUntilBirthday(c.birthday as string, today) }))
     .filter(({ days }) => days >= 0 && days <= 6)
     .sort((a, b) => a.days - b.days)
     .map(({ c, days }) => {
-      const when = days === 0 ? 'Today' : days === 1 ? 'Tomorrow' : fmt(nextBirthdayDate(c.birthday, today));
+      const when = days === 0 ? 'Today' : days === 1 ? 'Tomorrow' : fmt(nextBirthdayDate(c.birthday as string, today));
       return {
         id: `bday-${c.id}`,
         kind: 'birthday' as const,
@@ -368,6 +376,80 @@ export async function getToday(): Promise<TodayData> {
       };
     });
 
+  // --- Gone quiet: relationships drifting toward churn. Last-contact from the
+  // full sent ledger; new clients get a 30-day grace period. Capped at 5 rows.
+  const lastContactByClient = new Map<string, string>();
+  // Ground truth: logged interactions count as contact too (empty pre-0007).
+  const interactionsRes = await supabase.from('interactions').select('client_id, occurred_at');
+  for (const i of interactionsRes.data ?? []) {
+    const d = (i.occurred_at as string).slice(0, 10);
+    const prev = lastContactByClient.get(i.client_id as string);
+    if (!prev || d > prev) lastContactByClient.set(i.client_id as string, d);
+  }
+  for (const m of sentHistoryRes.data ?? []) {
+    const d = (m.scheduled_at as string).slice(0, 10);
+    const prev = lastContactByClient.get(m.client_id as string);
+    if (!prev || d > prev) lastContactByClient.set(m.client_id as string, d);
+  }
+  const goneQuiet: TodayItem[] = ((birthdayClientsRes.data ?? []) as unknown as BirthdayClient[])
+    .map((c) => {
+      const last = lastContactByClient.get(c.id) ?? null;
+      return { c, last, cls: classifyQuiet(last, c.created_at.slice(0, 10), today) };
+    })
+    .filter(({ cls }) => cls === 'never' || cls === 'quiet')
+    .sort((a, b) => (a.last ?? '0') < (b.last ?? '0') ? -1 : 1)
+    .slice(0, 5)
+    .map(({ c, last }) => ({
+      id: `quiet-${c.id}`,
+      kind: 'gone_quiet' as const,
+      clientId: c.id,
+      clientName: c.full_name,
+      reason: last ? `No contact since ${fmt(last)}` : 'No contact ever logged',
+      dateLabel: last ? fmt(last) : '—',
+      actionLabel: 'View client',
+      href: `/clients/${c.id}`,
+      tone: 'warning' as TodayTone,
+      status: last ? 'Quiet' : 'Never',
+      draft: {
+        phone: c.phone_number,
+        policyId: null,
+        message: buildDraftMessage('checkin', { clientFirstName: firstNameOf(c.full_name), policyLabel: '', dateText: '' }),
+      },
+    }));
+
+  // --- Morning briefing: the executive-assistant layer.
+  const DAYMS = 86400000;
+  const dEx = (a: string, b: string) => Math.round((Date.parse(b) - Date.parse(a)) / DAYMS);
+  const portfolioByClient = new Map<string, PortfolioClient>();
+  for (const c of (birthdayClientsRes.data ?? []) as unknown as BirthdayClient[]) {
+    portfolioByClient.set(c.id, {
+      id: c.id,
+      name: c.full_name,
+      birthdayInDays: c.birthday ? daysUntilBirthday(c.birthday, today) : null,
+      lastContact: lastContactByClient.get(c.id) ?? null,
+      clientSince: c.created_at.slice(0, 10),
+      annualValue: 0,
+      coverageTypes: [],
+      overduePolicies: [],
+      upcomingPolicies: [],
+    });
+  }
+  for (const p of policiesRes.data ?? []) {
+    const pc = portfolioByClient.get(p.client_id as string);
+    if (!pc || p.status !== 'active') continue;
+    const annual = annualizedPremium(p.payment_mode as string | null, p.premium_amount as number | null);
+    pc.annualValue += annual;
+    pc.coverageTypes.push(p.policy_type as string);
+    const label = POLICY_TYPE_LABEL[p.policy_type as PolicyType] ?? (p.policy_type as string);
+    const renewal = p.renewal_date as string | null;
+    if (renewal) {
+      const d = dEx(today, renewal);
+      if (d < 0) pc.overduePolicies.push({ label, renewalDate: renewal, annualized: annual });
+      else if (d <= 45) pc.upcomingPolicies.push({ label, renewalDate: renewal, daysAway: d, annualized: annual });
+    }
+  }
+  const briefing = buildBriefing({ today, clients: [...portfolioByClient.values()] });
+
   // stats
   const renewalsThisMonth = policies.filter(
     (p) => p.policy_type !== 'travel' && p.renewal_date && p.renewal_date >= today && p.renewal_date < monthEnd,
@@ -380,11 +462,13 @@ export async function getToday(): Promise<TodayData> {
     { key: 'scheduled', title: "Today's schedule", emoji: '', items: scheduledToday },
     { key: 'renewals', title: 'Upcoming renewals', emoji: '', items: upcomingRenewals },
     { key: 'followup', title: 'Follow-ups', emoji: '', items: followUp },
+    { key: 'quiet', title: 'Gone quiet', emoji: '', items: goneQuiet },
     { key: 'travel', title: 'Upcoming travel', emoji: '', items: upcomingTravel },
     { key: 'recent', title: 'Recent activity', emoji: '', items: recentActivity },
   ];
 
   return {
+    briefing,
     agentName,
     stats: {
       clients: clientsRes.count ?? 0,

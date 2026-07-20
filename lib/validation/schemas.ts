@@ -27,7 +27,17 @@ export const clientCreateSchema = z.object({
     .enum(['whatsapp', 'wechat', 'telegram'])
     .default('whatsapp'),
   notes: z.string().trim().max(2000).optional().nullable(),
+  occupation: z.string().trim().max(120).optional().nullable(),
+  dependants: z.coerce.number().int().min(0).max(20).optional().nullable(),
 });
+
+export const interactionCreateSchema = z.object({
+  client_id: uuid,
+  interaction_type: z.enum(['call', 'meeting', 'whatsapp', 'email', 'note']),
+  occurred_at: dateString.optional(), // defaults to today (SG) in the DB
+  note: z.string().trim().max(1000).optional().nullable(),
+});
+export type InteractionCreateInput = z.infer<typeof interactionCreateSchema>;
 
 export const clientUpdateSchema = clientCreateSchema.extend({
   id: uuid,

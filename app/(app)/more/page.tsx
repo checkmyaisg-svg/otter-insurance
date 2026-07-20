@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { PageHeader } from '@/components/shell/PageHeader';
-import { IconFileText, IconSettings, IconChevronRight } from '@/components/ui/icons';
+import { IconFileText, IconSettings, IconChevronRight, IconActivity } from '@/components/ui/icons';
 
 /**
  * MORE — mobile overflow menu (native bottom-nav pattern). Real destinations
@@ -8,6 +8,7 @@ import { IconFileText, IconSettings, IconChevronRight } from '@/components/ui/ic
  */
 export default function MorePage() {
   const items = [
+    { href: '/revenue', label: 'Revenue', desc: 'Book value, pipeline, at-risk income', Icon: IconActivity },
     { href: '/policies', label: 'Policies', desc: 'Your full book of business', Icon: IconFileText },
     { href: '/settings', label: 'Settings', desc: 'Profile and connections', Icon: IconSettings },
   ];

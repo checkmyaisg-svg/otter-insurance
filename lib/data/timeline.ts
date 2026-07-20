@@ -81,8 +81,33 @@ export async function getClientTimeline(
     .order('scheduled_at', { ascending: true });
   if (error) throw new Error(error.message);
 
+  // Logged real-world touchpoints (empty pre-migration-0007; errors tolerated).
+  const interactionsRes = await supabase
+    .from('interactions')
+    .select('id, interaction_type, occurred_at, note')
+    .eq('client_id', clientId);
+
   const now = Date.now();
   const events: TimelineEvent[] = [];
+
+  const INTERACTION_LABEL: Record<string, string> = {
+    call: 'Call',
+    meeting: 'Meeting',
+    whatsapp: 'WhatsApp (logged)',
+    email: 'Email',
+    note: 'Note',
+  };
+  for (const i of interactionsRes.data ?? []) {
+    events.push({
+      id: `interaction-${i.id}`,
+      kind: 'manual_reply_sent',
+      title: INTERACTION_LABEL[i.interaction_type as string] ?? 'Contact',
+      detail: (i.note as string | null) || 'Logged by you',
+      at: `${(i.occurred_at as string).slice(0, 10)}T12:00:00Z`,
+      scheduled: false,
+      tone: 'success',
+    });
+  }
 
   // policy_created events
   for (const p of policies) {

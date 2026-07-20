@@ -4,6 +4,7 @@ import { getToday } from '@/lib/data/dashboard';
 import { SidebarNav } from './SidebarNav';
 import { BottomNav } from './BottomNav';
 import { CommandPalette } from './CommandPalette';
+import { Copilot } from '@/components/copilot/Copilot';
 import { ProspektMark } from '@/components/ui/ProspektMark';
 import { logout } from '@/app/login/actions';
 
@@ -42,6 +43,7 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
 
   const items = [
     { href: '/', label: 'Today', badge: attention },
+    { href: '/revenue', label: 'Revenue' },
     { href: '/clients', label: 'Clients' },
     { href: '/policies', label: 'Policies' },
     { href: '/calendar', label: 'Calendar' },
@@ -117,6 +119,7 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
       {/* Mobile bottom tab bar */}
       <BottomNav items={mobileItems} />
       <CommandPalette />
+      <Copilot />
     </div>
   );
 }

@@ -38,7 +38,7 @@ export const POLICY_TYPE_LABEL: Record<PolicyType, string> = {
 export const PAYMENT_MODE_LABEL: Record<PaymentMode, string> = {
   monthly: 'Monthly',
   quarterly: 'Quarterly',
-  semi_annual: 'Semi-annual',
+  semi_annual: 'Half-yearly',
   annual: 'Annual',
   single: 'Single premium',
 };

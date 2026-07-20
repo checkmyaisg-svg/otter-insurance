@@ -53,6 +53,8 @@ export async function createClientRecord(
       birthday: parsed.data.birthday ?? null,
       preferred_platform: parsed.data.preferred_platform,
       notes: parsed.data.notes ?? null,
+      ...(parsed.data.occupation !== undefined ? { occupation: parsed.data.occupation ?? null } : {}),
+      ...(parsed.data.dependants !== undefined ? { dependants: parsed.data.dependants ?? null } : {}),
     })
     .select('id')
     .single();
@@ -91,6 +93,8 @@ export async function updateClientRecord(
       birthday: parsed.data.birthday ?? null,
       preferred_platform: parsed.data.preferred_platform,
       notes: parsed.data.notes ?? null,
+      ...(parsed.data.occupation !== undefined ? { occupation: parsed.data.occupation ?? null } : {}),
+      ...(parsed.data.dependants !== undefined ? { dependants: parsed.data.dependants ?? null } : {}),
       version: parsed.data.expected_version + 1,
     })
     .eq('id', parsed.data.id)

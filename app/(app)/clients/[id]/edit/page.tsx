@@ -27,6 +27,8 @@ export default async function EditClientPage({
       email: values.email || undefined,
       birthday: values.birthday || undefined,
       preferred_platform: values.preferred_platform,
+      occupation: values.occupation || undefined,
+      dependants: values.dependants === '' ? undefined : Number(values.dependants),
       notes: values.notes || undefined,
     });
   }
@@ -43,6 +45,8 @@ export default async function EditClientPage({
           phone_number: client.phone_number,
           email: client.email ?? '',
           birthday: client.birthday ?? '',
+          occupation: (client as { occupation?: string | null }).occupation ?? '',
+          dependants: (client as { dependants?: number | null }).dependants != null ? String((client as { dependants?: number | null }).dependants) : '',
           preferred_platform: client.preferred_platform,
           notes: client.notes ?? '',
         }}

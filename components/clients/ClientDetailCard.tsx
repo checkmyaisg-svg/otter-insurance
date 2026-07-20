@@ -20,6 +20,8 @@ export function ClientDetailCard({ client }: { client: ClientListItem }) {
       <dl className="grid grid-cols-2 gap-4">
         <Field label="Birthday" value={formatDate(client.birthday)} />
         <Field label="Client since" value={formatDate(client.created_at)} />
+        <Field label="Occupation" value={(client as { occupation?: string | null }).occupation || '—'} />
+        <Field label="Dependants" value={(client as { dependants?: number | null }).dependants != null ? String((client as { dependants?: number | null }).dependants) : '—'} />
       </dl>
 
       <div className="mt-6 border-t pt-5">

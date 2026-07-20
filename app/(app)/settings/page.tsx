@@ -8,6 +8,8 @@ export const dynamic = 'force-dynamic';
  * placeholder (the connection flow is built in the WhatsApp milestone). Kept
  * intentionally simple; no business logic changes in this UI milestone.
  */
+const copilotEnhanced = Boolean(process.env.ANTHROPIC_API_KEY);
+
 export default async function SettingsPage() {
   const supabase = await createClient();
   const {
@@ -52,6 +54,17 @@ export default async function SettingsPage() {
           </div>
         </section>
       </div>
+          <section className="rounded-lg bg-card p-4 shadow-[0_0_0_1px_rgba(255,255,255,0.04),0_2px_8px_rgba(0,0,0,0.35)]">
+        <p className="text-[11px] font-medium uppercase tracking-wide text-faint">Copilot understanding</p>
+        <p className="mt-1 text-[13.5px]">
+          {copilotEnhanced ? 'Enhanced — AI classification active for long-tail questions.' : 'Standard — instant answers for common questions.'}
+        </p>
+        {!copilotEnhanced ? (
+          <p className="mt-0.5 text-[12.5px] text-muted-foreground">
+            Add ANTHROPIC_API_KEY to the server environment to enable flexible phrasing. Answers always come from your data either way.
+          </p>
+        ) : null}
+      </section>
     </main>
   );
 }

@@ -17,7 +17,8 @@ export type DraftKind =
   | 'anniversary'
   | 'travel_departure'
   | 'travel_return'
-  | 'birthday';
+  | 'birthday'
+  | 'checkin';
 
 export interface DraftContext {
   /** Client's first name, e.g. "Mei Ling" -> "Mei Ling" (we use the given name as stored, first token). */
@@ -94,6 +95,14 @@ export function buildDraftMessage(kind: DraftKind, ctx: DraftContext): string {
       );
     }
 
+    case 'checkin': {
+      // Light re-engagement: no agenda, no pitch — the goal is a reply.
+      return (
+        `Hi ${ctx.clientFirstName}! Just checking in — hope everything's going well. ` +
+        `If anything has changed on your side (new car, new home, family plans), ` +
+        `let me know and we'll make sure your coverage keeps up. 🙂`
+      );
+    }
     case 'birthday': {
       // Birthday greeting. Deliberately does NOT pitch a product — the greeting
       // IS the touchpoint; the review conversation follows naturally in chat.

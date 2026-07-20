@@ -67,7 +67,7 @@ export function MessageDraft({
         aria-label={`Message ${clientName} on WhatsApp`}
         className={
           compact
-            ? 'flex h-11 w-11 shrink-0 items-center justify-center rounded transition-colors duration-150 hover:bg-muted'
+            ? 'flex h-11 w-11 shrink-0 items-center justify-center rounded transition-colors duration-150 hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40'
             : 'inline-flex h-11 items-center gap-2 rounded-md border border-input bg-background px-4 text-sm font-medium transition-colors hover:bg-accent'
         }
       >

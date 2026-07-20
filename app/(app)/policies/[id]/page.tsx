@@ -3,6 +3,7 @@ import { notFound } from 'next/navigation';
 import { getPolicyById, getRemindersForPolicy } from '@/lib/data/policies';
 import { PolicyTypeBadge, PolicyStatusBadge } from '@/components/policies/PolicyBadges';
 import { CancelPolicyDialog } from '@/components/policies/CancelPolicyDialog';
+import { RenewalOutcome } from '@/components/policies/RenewalOutcome';
 import { Button } from '@/components/ui/button';
 import { formatDate } from '@/lib/format/display';
 import { behaviorOf, PAYMENT_MODE_LABEL } from '@/lib/policies/behavior';
@@ -125,6 +126,9 @@ export default async function PolicyDetailPage({
               </>
             ) : null}
           </dl>
+          {isActive && behavior === 'renewable' ? (
+            <RenewalOutcome policyId={policy.id} renewalDate={policy.renewal_date} />
+          ) : null}
         </div>
 
         {/* Premium & cover */}

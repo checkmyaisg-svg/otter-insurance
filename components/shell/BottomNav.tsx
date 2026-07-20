@@ -4,10 +4,11 @@ import * as React from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { cn } from '@/lib/utils';
-import { IconSun, IconUsers, IconFileText, IconSettings, IconCalendarClock, IconMessageCircle, IconInbox } from '@/components/ui/icons';
+import { IconSun, IconUsers, IconFileText, IconSettings, IconCalendarClock, IconMessageCircle, IconInbox, IconActivity } from '@/components/ui/icons';
 
 const NAV_ICON: Record<string, React.ComponentType<{ size?: number; className?: string }>> = {
   Today: IconSun,
+  Revenue: IconActivity,
   Clients: IconUsers,
   Policies: IconFileText,
   Calendar: IconCalendarClock,
