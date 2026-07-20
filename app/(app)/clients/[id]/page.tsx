@@ -28,12 +28,21 @@ export default async function ClientDetailPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const client = await getClientById(id);
-  if (!client) notFound();
 
-  const policies = await getPoliciesForClient(id);
-  const timeline = await getClientTimeline(id, policies);
-  const intel = await getClientIntelligence(client.id);
+  // PERF: all independent data in parallel — one round-trip wave instead of a
+  // four-deep waterfall (this page was the slowest tap in the app on mobile).
+  // Timeline depends on policies, so that pair chains inside its own branch.
+  const [client, policiesAndTimeline, intel] = await Promise.all([
+    getClientById(id),
+    (async () => {
+      const policies = await getPoliciesForClient(id);
+      const timeline = await getClientTimeline(id, policies);
+      return { policies, timeline };
+    })(),
+    getClientIntelligence(id),
+  ]);
+  if (!client) notFound();
+  const { policies, timeline } = policiesAndTimeline;
 
   return (
     <main className="mx-auto max-w-[960px] p-6 md:p-8">
